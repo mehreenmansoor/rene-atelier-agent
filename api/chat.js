@@ -6,7 +6,7 @@ dotenv.config();
 // 1. Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_KEY,
 );
 
 // 2. Initialize OpenAI SDK configured for Groq
@@ -22,11 +22,13 @@ async function getServiceVariants(serviceId) {
 
   const { data, error } = await supabase
     .from("service_variants")
-    .select(`
+    .select(
+      `
       id, service_id, weight, price,
       fabric_types ( name ),
       embroidery_types ( name )
-    `)
+    `,
+    )
     .eq("service_id", parsedId);
 
   if (error) return { error: error.message };
@@ -35,7 +37,7 @@ async function getServiceVariants(serviceId) {
     fabric: v.fabric_types?.name || "Standard",
     embroidery: v.embroidery_types?.name || "Standard",
     weight: v.weight,
-    price: `PKR ${v.price}`
+    price: `PKR ${v.price}`,
   }));
 }
 
@@ -45,27 +47,33 @@ const tools = [
     type: "function",
     function: {
       name: "get_service_variants",
-      description: "Retrieves fabric, embroidery, weight, and pricing options for a specific clothing service ID.",
+      description:
+        "Retrieves fabric, embroidery, weight, and pricing options for a specific clothing service ID.",
       parameters: {
         type: "object",
         properties: {
           serviceId: {
             type: "integer",
-            description: "The numeric service ID to query variants for (e.g., 1)."
-          }
+            description:
+              "The numeric service ID to query variants for (e.g., 1).",
+          },
         },
-        required: ["serviceId"]
-      }
-    }
-  }
+        required: ["serviceId"],
+      },
+    },
+  },
 ];
 
 // 5. Express Route Endpoint
 export default async function handler(req, res) {
-    try {
+  try {
     const { messages: incomingMessages } = req.body;
 
-    if (!incomingMessages || !Array.isArray(incomingMessages) || incomingMessages.length === 0) {
+    if (
+      !incomingMessages ||
+      !Array.isArray(incomingMessages) ||
+      incomingMessages.length === 0
+    ) {
       return res.status(400).json({ error: "Messages array is required." });
     }
 
@@ -78,10 +86,14 @@ export default async function handler(req, res) {
         you can bold the text which is important
         and when listing multiple options, give those options in points form 
         When listing multiple options, describe them conversationally.
-        If the user mentions 'Bridal', 'Wedding Day', 'Barat', or 'Walima', query only the Bridal Couture tier (PKR 180,000 – 320,000). Reserve the PKR 30,000 – 55,000 tier strictly for 'Custom Formals & Party Wear'.
-        If you are asked about anything other than pricing, variants, or services, respond politely that you are only able to provide information about our services and custom options.`
+        We keep things focused so we can give you truly bespoke service.
+        Custom Formal & Party Wear elegant pieces for cocktail parties, galas, red‑carpet events and other celebrations. Prices run between PKR 30,000 and 55,000.
+        Bridal Couture full‑suite wedding attire, from the mehndi day to the walima. Prices range from PKR 180,000 to 320,000.
+        Those are the two main tiers we offer. Let me know which one you’d like to explore, and I’ll pull the exact fabric, embroidery and weight options for you.
+        If the user mentions 'Bridal', 'Wedding Day', 'Barat', or 'Walima', query only the Bridal Couture tier (PKR 180,000 320,000). Reserve the PKR 30,000 55,000 tier strictly for 'Custom Formals & Party Wear'.
+        If you are asked about anything other than pricing, variants, or services, respond politely that you are only able to provide information about our services and custom options.`,
       },
-      ...incomingMessages
+      ...incomingMessages,
     ];
 
     // First Pass: Model evaluates prompt & determines if a tool is needed
@@ -89,22 +101,25 @@ export default async function handler(req, res) {
       model: "openai/gpt-oss-120b",
       messages: messages,
       tools: tools,
-      tool_choice: "auto"
+      tool_choice: "auto",
     });
 
     let responseMessage = response.choices[0].message;
 
     // Check if model triggered tool calls
     if (responseMessage.tool_calls) {
-      console.log("Tool Call Requested:", responseMessage.tool_calls[0].function);
-      
+      console.log(
+        "Tool Call Requested:",
+        responseMessage.tool_calls[0].function,
+      );
+
       // Append assistant's tool-call request message to conversation memory
       messages.push(responseMessage);
 
       for (const toolCall of responseMessage.tool_calls) {
         if (toolCall.function.name === "get_service_variants") {
           const args = JSON.parse(toolCall.function.arguments);
-          
+
           // Execute Supabase lookup
           const variantsData = await getServiceVariants(args.serviceId);
           console.log("\nSupabase Data Fetched:", variantsData);
@@ -114,7 +129,7 @@ export default async function handler(req, res) {
             tool_call_id: toolCall.id,
             role: "tool",
             name: "get_service_variants",
-            content: JSON.stringify(variantsData)
+            content: JSON.stringify(variantsData),
           });
         }
       }
@@ -124,14 +139,13 @@ export default async function handler(req, res) {
         model: "openai/gpt-oss-120b",
         messages: messages,
         tools: tools,
-        tool_choice: "auto"
-        });
+        tool_choice: "auto",
+      });
     }
 
     return res.json({ reply: response.choices[0].message.content });
-
   } catch (err) {
     console.error("Chat Route Error:", err);
     return res.status(500).json({ error: err.message });
   }
-};
+}
