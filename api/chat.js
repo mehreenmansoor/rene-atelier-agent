@@ -1,11 +1,7 @@
-import cors from "cors";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-
 dotenv.config();
-
-app.use(cors()); 
 
 // 1. Initialize Supabase client
 const supabase = createClient(
