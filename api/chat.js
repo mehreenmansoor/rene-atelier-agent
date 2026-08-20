@@ -122,8 +122,10 @@ export default async function handler(req, res) {
       // Second Pass: Send updated context back to model for final text reply
       response = await groq.chat.completions.create({
         model: "openai/gpt-oss-120b",
-        messages: messages
-      });
+        messages: messages,
+        tools: tools,
+        tool_choice: "auto"
+        });
     }
 
     return res.json({ reply: response.choices[0].message.content });
