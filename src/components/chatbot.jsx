@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, User, Loader2 } from "lucide-react";
+import { Send, Sparkles, User, Loader2, Phone, PhoneOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import Vapi from "@vapi-ai/web";
+
+const vapi = new Vapi(process.env.VAPI_PUBLIC_API_KEY);
 
 export default function ReneChat() {
   const [messages, setMessages] = useState([
@@ -14,10 +17,42 @@ export default function ReneChat() {
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
 
+  // Vapi Voice State
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+
   // Auto-scroll to bottom of conversation
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Vapi Event Listeners
+  useEffect(() => {
+    vapi.on("call-start", () => {
+      setIsConnecting(false);
+      setCallActive(true);
+    });
+
+    vapi.on("call-end", () => {
+      setIsConnecting(false);
+      setCallActive(false);
+    });
+
+    vapi.on("error", (e) => {
+      console.error("Vapi Voice Error:", e);
+      setIsConnecting(false);
+      setCallActive(false);
+    });
+  }, []);
+
+  const toggleVoiceCall = () => {
+    if (callActive) {
+      vapi.stop();
+    } else {
+      setIsConnecting(true);
+      vapi.start("63b2761d-f5d0-47aa-ac4a-eb479bb8110f");
+    }
+  };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -26,13 +61,11 @@ export default function ReneChat() {
     const userText = input.trim();
     setInput("");
 
-    // Build updated conversation array
     const updatedMessages = [...messages, { role: "user", content: userText }];
     setMessages(updatedMessages);
     setLoading(true);
 
     try {
-      // Send full conversation history instead of single message
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,10 +133,28 @@ export default function ReneChat() {
             Atelier Concierge
           </p>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-stone-300/70">
+        <div className="flex items-center gap-1.5 text-[11px] text-stone-300/70 mr-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           Online
         </div>
+
+        {/* Voice Toggle Button */}
+        <button
+          type="button"
+          onClick={toggleVoiceCall}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+            callActive
+              ? "bg-red-600 text-white animate-pulse"
+              : "bg-stone-100/10 text-stone-200 hover:bg-stone-100/20 border border-stone-100/20"
+          }`}
+        >
+          {callActive ? (
+            <PhoneOff className="w-3.5 h-3.5" />
+          ) : (
+            <Phone className="w-3.5 h-3.5" />
+          )}
+          {isConnecting ? "Connecting..." : callActive ? "End Call" : "Voice Chat"}
+        </button>
       </div>
 
       {/* Messages Feed */}
