@@ -159,3 +159,52 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
+export default async function handler(req, res) {
+  // 1. Enable CORS for web and Vapi requests
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  try {
+    let userMessage = "";
+
+    // 2. Extract transcript if payload comes from Vapi
+    if (req.body?.message?.type === "transcript" && req.body?.message?.transcriptType === "final") {
+      userMessage = req.body.message.transcript;
+    } else if (req.body?.message) {
+      userMessage = typeof req.body.message === "string" ? req.body.message : req.body.message.content;
+    } else if (req.body?.inputMessage) {
+      userMessage = req.body.inputMessage;
+    }
+
+    // Acknowledge Vapi status/ping events without throwing an error
+    if (!userMessage && req.body?.message?.type !== "function-call") {
+      return res.status(200).json({ acknowledged: true });
+    }
+
+    // 3. RUN YOUR EXISTING GROQ & SUPABASE LOGIC HERE
+    // Example: const replyText = await getGroqResponse(userMessage);
+    const replyText = "Welcome to Réne Atelier. How can I assist you with our custom formal or bridal couture services today?";
+
+    // 4. Return response formatted for both Vapi and standard web chat
+    return res.status(200).json({
+      results: [
+        {
+          toolCallId: req.body?.message?.toolCalls?.[0]?.id,
+          result: replyText
+        }
+      ],
+      response: replyText,
+      reply: replyText
+    });
+
+  } catch (error) {
+    console.error("Vapi/Chat Error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+}
