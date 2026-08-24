@@ -3,7 +3,6 @@ export const config = {
 };
 
 export default async function handler(req) {
-  // Handle CORS Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
@@ -17,9 +16,15 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const messages = body?.messages || [];
 
-    // Direct stream request to Groq OpenAI endpoint
+    // Sanitize incoming Vapi messages so Groq doesn't crash on invalid fields
+    const sanitizedMessages = (body?.messages || [])
+      .filter((m) => m && m.content)
+      .map((m) => ({
+        role: m.role === "assistant" || m.role === "user" ? m.role : "user",
+        content: String(m.content),
+      }));
+
     const groqResponse = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -29,14 +34,14 @@ export default async function handler(req) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "openai/gpt-oss-20b",
           messages: [
             {
               role: "system",
               content:
-                "You are Réne, an elite luxury fashion assistant for Réne Atelier. Keep answers concise, natural, elegant, and conversational for voice. Do not use Markdown formatting like asterisks or bullet points.",
+                "You are Réne, an elite luxury fashion assistant for Réne Atelier. Keep answers short, natural, and conversational for voice. Do not use Markdown formatting like asterisks or bullet points.",
             },
-            ...messages,
+            ...sanitizedMessages,
           ],
           stream: true,
           temperature: 0.7,
@@ -47,11 +52,13 @@ export default async function handler(req) {
 
     if (!groqResponse.ok) {
       const errText = await groqResponse.text();
-      console.error("Groq API Error:", errText);
-      return new Response(JSON.stringify({ error: errText }), { status: 500 });
+      console.error("Groq Upstream Error:", errText);
+      return new Response(
+        JSON.stringify({ error: "Groq Upstream Error", details: errText }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    // Return the stream back to Vapi
     return new Response(groqResponse.body, {
       headers: {
         "Content-Type": "text/event-stream",
@@ -61,10 +68,13 @@ export default async function handler(req) {
       },
     });
   } catch (err) {
-    console.error("Vapi Edge Handler Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("Vapi Edge Error:", err);
+    return new Response(
+      JSON.stringify({ error: "Edge Execution Error", message: err.message }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
